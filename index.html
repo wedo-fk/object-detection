@@ -337,17 +337,27 @@
     result.textContent = s.resultInit;
   }
 
-  function chooseLanguage(lang){
+  async function chooseLanguage(lang){
     appLang = lang;
     try{ localStorage.setItem("odLang", lang); }catch(e){}
     applyLanguageUI();
     langScreen.style.display = "none";
     unlockSpeech();
-    startCamera();
+
+    // مهم جدًا: لازم نطلب إذن الكاميرا الأول ونستنى يخلص (يتوافق أو يترفض)
+    // قبل ما نطلب إذن المايك للأوامر الصوتية. لو طلبنا الاتنين في نفس اللحظة،
+    // المتصفح (خصوصًا على الموبايل) بيتلخبط وبيرفض واحد منهم تلقائيًا حتى
+    // لو المستخدم مضغطش "رفض" — وده اللي كان بيسبب مشكلة "تم رفض الإذن"
+    // فجأة رغم إن الكاميرا كانت شغالة قبل كده.
+    await startCamera();
+
     if(secureOk){
       loadLibrariesAndModel();
     }
-    startVoiceCommands();
+
+    // نستنى شوية كمان قبل ما نطلب إذن المايك، عشان نضمن إن أي نافذة إذن
+    // خاصة بالكاميرا اتقفلت تمامًا في كل المتصفحات (خصوصًا Safari آيفون).
+    setTimeout(function(){ startVoiceCommands(); }, 800);
   }
 
   langArBtn.addEventListener("click", function(){ chooseLanguage("ar"); });
