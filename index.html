@@ -27,8 +27,8 @@
 
   .camwrap{position:relative;border-radius:18px;overflow:hidden;background:#000;
     border:1px solid #223040;aspect-ratio:3/4;}
-  video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);}
-  canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transform:scaleX(-1);}
+  video{width:100%;height:100%;object-fit:cover;display:block;}
+  canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
   .status-chip{position:absolute;top:10px;inset-inline-start:10px;background:rgba(0,0,0,.6);
     color:var(--text);font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid #2A3644;}
 
@@ -75,7 +75,7 @@
   <div class="lang-top">
     <div class="lang-logo">🧭</div>
     <div class="lang-title">كشف الأشياء<br>Object Detection</div>
-    <div class="lang-sub" dir="rtl">دوس على "العربية" أو "English" عشان تبدأ. لو عندك مساعد صوتي (VoiceOver / TalkBack) هيقرالك اسم كل زرار.<br><br>Tap "العربية" or "English" to start.</div>
+    <div class="lang-sub" dir="rtl">دوس على "العربية" أو "English" عشان تبدأ.<br>أو دوس في أي مكان في الشاشة وقول بصوتك "عربي" أو "English".<br>لو عندك مساعد صوتي (VoiceOver / TalkBack) هيقرالك اسم كل زرار.<br><br>Tap "العربية" or "English" to start.<br>Or tap anywhere and say "Arabic" or "English" out loud.</div>
   </div>
   <div class="lang-btns">
     <button class="lang-btn" id="langArBtn" lang="ar" aria-label="العربية">🕌 العربية</button>
@@ -136,6 +136,7 @@
   var hintText    = document.getElementById("hintText");
 
   var model = null;
+  var mobilenetModel = null; // نموذج تصنيف عام إضافي (~1000 نوع حاجة) — بيشتغل كطبقة احتياطية
   var lastText = "";
   var lastSegments = [];
 
@@ -144,11 +145,12 @@
      العربي والإنجليزي زي الإصدارات القديمة */
   var appLang = null;
 
-  /* الفيديو معكوس بصريًا دايمًا (زي المرايا) عن طريق CSS فوق (transform:scaleX(-1))
-     على الفيديو والكانفاس مع بعض عشان يفضلوا متطابقين. وعشان كلام يمين/شمال
-     في التنبيه الصوتي يفضل مطابق لما المستخدم شايفه على الشاشة، zoneLabel تحت
-     بتاخد ده في الاعتبار وتعكس يمين/شمال في الحساب */
-  var mirrored = true;
+  /* الكاميرا المستخدمة هي الكاميرا الخلفية (بتصور اللي قدام المستخدم، مش وشه)،
+     فمفيش داعي لعكس الصورة بصريًا خالص: يمين الشاشة = يمين المستخدم فعليًا،
+     زي ما بيحصل بالظبط لو بتبص من نافذة أو دربيل. العكس (mirror) بيتستخدم بس
+     لو الكاميرا أمامية (سيلفي) وده مش حالتنا هنا. خليناها false عشان يمين/شمال
+     في الصورة وفي الكلام المسموع يبقوا مطابقين للواقع تمامًا. */
+  var mirrored = false;
 
   function showError(html){
     errorBanner.innerHTML = html;
@@ -363,6 +365,81 @@
   langArBtn.addEventListener("click", function(){ chooseLanguage("ar"); });
   langEnBtn.addEventListener("click", function(){ chooseLanguage("en"); });
 
+  /* ===================== اختيار اللغة بالصوت =====================
+     عشان الشخص الكفيف مش هيقدر يشوف مكان الزرارين بالظبط، بنسمحله يدوس في
+     أي حتة تانية في الشاشة (مش لازم يلاقي الزرار بالظبط)، والتطبيق هيسأله
+     بصوته "عربي ولا English؟" ويسمع إجابته ويختار اللغة تلقائي. الزرارين
+     برضه شغالين عادي لأي حد شايف الشاشة وعايز يدوس عليهم مباشرة. */
+  var SRClassEarly = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var langPickerBusy = false;
+  var LANG_PICK_WORDS = {
+    ar: ["عربي","العربي","عربيه","العربية","ar","arabic"],
+    en: ["english","انجليزي","الانجليزي","إنجليزي","الإنجليزية","انجليزية","en"]
+  };
+
+  function speakBilingual(arText, enText, cb){
+    if(!("speechSynthesis" in window)){ if(cb) cb(); return; }
+    window.speechSynthesis.cancel();
+    var u1 = new SpeechSynthesisUtterance(arText);
+    u1.lang = "ar-SA";
+    var u2 = new SpeechSynthesisUtterance(enText);
+    u2.lang = "en-US";
+    u2.onend = function(){ if(cb) cb(); };
+    u2.onerror = function(){ if(cb) cb(); };
+    u1.onend = function(){ window.speechSynthesis.speak(u2); };
+    u1.onerror = function(){ window.speechSynthesis.speak(u2); };
+    setTimeout(function(){ window.speechSynthesis.speak(u1); }, 60);
+  }
+
+  function listenForLanguageChoice(attemptsLeft){
+    if(!SRClassEarly || attemptsLeft <= 0) return;
+    try{
+      var rec = new SRClassEarly();
+      rec.lang = "ar-SA";
+      rec.continuous = false;
+      rec.interimResults = false;
+      var handled = false;
+      rec.onresult = function(e){
+        var text = "";
+        for(var i=0;i<e.results.length;i++){ text += e.results[i][0].transcript; }
+        text = text.toLowerCase();
+        var found = null;
+        LANG_PICK_WORDS.ar.forEach(function(w){ if(text.indexOf(w) > -1) found = "ar"; });
+        LANG_PICK_WORDS.en.forEach(function(w){ if(text.indexOf(w) > -1) found = "en"; });
+        if(found){
+          handled = true;
+          langPickerBusy = false;
+          chooseLanguage(found);
+        }
+      };
+      rec.onerror = function(){};
+      rec.onend = function(){
+        if(!handled){
+          // ما اتفهمش كلام، نجرب تاني كام مرة كمان بعد لحظة بسيطة
+          setTimeout(function(){ listenForLanguageChoice(attemptsLeft - 1); }, 400);
+        }
+      };
+      rec.start();
+    }catch(e){ langPickerBusy = false; }
+  }
+
+  function startLangVoicePicker(){
+    if(langPickerBusy) return;
+    langPickerBusy = true;
+    unlockSpeech();
+    speakBilingual(
+      "قول عربي، لو حابب العربي.",
+      "Or say English, for English.",
+      function(){ listenForLanguageChoice(3); }
+    );
+  }
+
+  // أي دوسة في شاشة اللغة برة الزرارين نفسهم بتشغل وضع الاختيار بالصوت
+  langScreen.addEventListener("click", function(e){
+    if(e.target.closest(".lang-btn")) return; // الزرارين ليهم منطقهم الخاص فوق
+    startLangVoicePicker();
+  });
+
   // لو اللغة كانت محفوظة من زيارة سابقة، نخليها أول اختيار جاهز (بس المستخدم
   // لازم يدوس عليها برضه — عشان ضغطة الزرار هي اللي بتفتح إذن الكاميرا/المايك)
   try{
@@ -471,6 +548,13 @@
       // النموذج بقى جاهز — نبلّغ منطق البدء التلقائي
       window.__modelReady = true;
       window.__maybeAutoStart();
+
+      // نحمّل نموذج تصنيف عام إضافي (MobileNet، بيعرف حوالي 1000 نوع حاجة) في
+      // الخلفية من غير ما نعطّل أو نأخّر التطبيق الأساسي. ده بيشتغل كطبقة
+      // احتياطية بس: لو COCO-SSD (النموذج الأساسي) ما لقاش حاجة واضحة في
+      // الصورة، بنستخدم النموذج ده عشان نحاول نقول تخمين عام لاسم الحاجة،
+      // حتى لو ما قدرش يحدد مكانها بالظبط (يمين/شمال) زي COCO-SSD.
+      loadMobileNetInBackground();
     }catch(e){
       console.error(e);
       status.textContent = "⚠️ فشل تحميل النموذج";
@@ -486,6 +570,41 @@
       var retryBtn = document.getElementById("retryModelBtn");
       if(retryBtn) retryBtn.addEventListener("click", loadLibrariesAndModel);
     }
+  }
+
+  /* تحميل نموذج التصنيف العام (MobileNet) بهدوء في الخلفية. ده اختياري ومش
+     أساسي لتشغيل التطبيق — لو فشل تحميله (نت بطيء، مصدر محجوب...) التطبيق
+     الأساسي (COCO-SSD) بيفضل شغال عادي من غير ما نزعج المستخدم بأي رسالة خطأ. */
+  async function loadMobileNetInBackground(){
+    try{
+      if(typeof mobilenet === "undefined"){
+        await loadScriptWithFallback([
+          "https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js",
+          "https://unpkg.com/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"
+        ]);
+      }
+      mobilenetModel = await mobilenet.load();
+      console.log("MobileNet (تصنيف عام احتياطي) جاهز");
+    }catch(e){
+      console.error("تعذّر تحميل نموذج التصنيف العام الاحتياطي (مش مشكلة، التطبيق الأساسي شغال عادي):", e);
+    }
+  }
+
+  /* لو COCO-SSD ما لقاش حاجة واضحة، بنجرب نسأل MobileNet يخمّن اسم عام للي
+     في الكاميرا حاليًا. مفيش موقع (يمين/شمال) هنا لأن ده تصنيف للصورة كلها،
+     مش كشف بمكان محدد. بنتكلم بس لو النموذج واثق بنسبة معقولة (>15%) عشان
+     منقولش تخمينات عشوائية غلط. */
+  async function tryMobileNetFallback(){
+    if(!mobilenetModel || video.readyState < 2) return null;
+    try{
+      var preds = await mobilenetModel.classify(video, 1);
+      if(preds && preds.length && preds[0].probability > 0.15){
+        var raw = (preds[0].className || "").split(",")[0].trim();
+        if(!raw) return null;
+        return (appLang === "en" ? "Possibly: " : "ممكن يكون: ") + raw;
+      }
+    }catch(e){ console.error(e); }
+    return null;
   }
 
   /* تحميل المكتبات الأساسية (مع مصادر بديلة) وبعدين النموذج */
@@ -599,6 +718,7 @@
   var scanBusy = false;
   var scanTimer = null;
   var SCAN_INTERVAL_MS = 3000;
+  var lastSpokenText = ""; // آخر جملة اتقالت بالفعل — عشان منكررش نفس الكلام كل 3 ثواني
 
   async function runOneScan(){
     if(scanBusy) return;
@@ -611,9 +731,18 @@
       var s = STR[appLang];
 
       if(predictions.length === 0){
-        lastText = s.noObjects;
-        result.textContent = lastText;
-        lastSegments = [ {text: s.noObjects} ];
+        // COCO-SSD ما لقاش حاجة من الـ80 نوع اللي بيعرفهم — نجرب طبقة احتياطية
+        // (MobileNet) تخمّن اسم عام للي في الكاميرا، بدل ما نقول "مفيش حاجة" على طول
+        var fallbackGuess = await tryMobileNetFallback();
+        if(fallbackGuess){
+          lastText = fallbackGuess;
+          result.textContent = lastText;
+          lastSegments = [ {text: fallbackGuess} ];
+        } else {
+          lastText = s.noObjects;
+          result.textContent = lastText;
+          lastSegments = [ {text: s.noObjects} ];
+        }
       } else {
         var frameWidth = video.videoWidth;
         var displayParts = [];
@@ -630,7 +759,13 @@
         result.textContent = lastText;
         result.classList.remove("empty");
       }
-      speakSequence(lastSegments);
+      // بنقول الجملة بالصوت بس لو اتغيّرت عن آخر مرة اتقالت. لو المستخدم لسه
+      // واقف قدام نفس الحاجة، هنفضل نحدّث الصورة/المربعات على الشاشة، لكن مش
+      // هنكرر نفس الجملة كل 3 ثواني — ده اللي كان بيحس المستخدم إنه "بيتكرر".
+      if(lastText !== lastSpokenText){
+        lastSpokenText = lastText;
+        speakSequence(lastSegments);
+      }
     } finally {
       scanBusy = false;
     }
@@ -667,6 +802,7 @@
       return;
     }
     scanning = true;
+    lastSpokenText = ""; // بداية كشف جديدة — نضمن إن أول نتيجة هتتقال بالصوت أكيد
     detectBtn.textContent = s.stopDetect;
     result.textContent = s.analyzing;
     result.classList.add("empty");
