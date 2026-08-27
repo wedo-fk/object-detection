@@ -76,6 +76,7 @@
     <div class="lang-logo">🧭</div>
     <div class="lang-title">كشف الأشياء<br>Object Detection</div>
     <div class="lang-sub" dir="rtl">دوس على "العربية" أو "English" عشان تبدأ.<br>أو دوس في أي مكان في الشاشة وقول بصوتك "عربي" أو "English".<br>لو عندك مساعد صوتي (VoiceOver / TalkBack) هيقرالك اسم كل زرار.<br><br>Tap "العربية" or "English" to start.<br>Or tap anywhere and say "Arabic" or "English" out loud.</div>
+    <div class="lang-sub" id="voicePickStatus" style="min-height:20px;"></div>
   </div>
   <div class="lang-btns">
     <button class="lang-btn" id="langArBtn" lang="ar" aria-label="العربية">🕌 العربية</button>
@@ -372,6 +373,7 @@
      برضه شغالين عادي لأي حد شايف الشاشة وعايز يدوس عليهم مباشرة. */
   var SRClassEarly = window.SpeechRecognition || window.webkitSpeechRecognition;
   var langPickerBusy = false;
+  var voicePickStatus = document.getElementById("voicePickStatus");
   var LANG_PICK_WORDS = {
     ar: ["عربي","العربي","عربيه","العربية","ar","arabic"],
     en: ["english","انجليزي","الانجليزي","إنجليزي","الإنجليزية","انجليزية","en"]
@@ -392,13 +394,23 @@
   }
 
   function listenForLanguageChoice(attemptsLeft){
-    if(!SRClassEarly || attemptsLeft <= 0) return;
+    if(!SRClassEarly){
+      voicePickStatus.textContent = "⚠️ المتصفح ده مش بيدعم التعرف على الصوت — استخدم الزرارين بالأسفل. / Voice input not supported here — use the buttons below.";
+      langPickerBusy = false;
+      return;
+    }
+    if(attemptsLeft <= 0){
+      voicePickStatus.textContent = "";
+      langPickerBusy = false;
+      return;
+    }
     try{
       var rec = new SRClassEarly();
       rec.lang = "ar-SA";
       rec.continuous = false;
       rec.interimResults = false;
       var handled = false;
+      voicePickStatus.textContent = "🎙️ بسمعك دلوقتي… قول عربي أو English";
       rec.onresult = function(e){
         var text = "";
         for(var i=0;i<e.results.length;i++){ text += e.results[i][0].transcript; }
@@ -409,10 +421,20 @@
         if(found){
           handled = true;
           langPickerBusy = false;
+          voicePickStatus.textContent = "";
           chooseLanguage(found);
+        } else {
+          voicePickStatus.textContent = "❓ مسمعتش كلمة واضحة، هجرب تاني…";
         }
       };
-      rec.onerror = function(){};
+      rec.onerror = function(e){
+        if(e.error === "not-allowed" || e.error === "service-not-allowed"){
+          voicePickStatus.textContent = "⚠️ تم رفض إذن الميكروفون. روح إعدادات المتصفح وسمح بالميكروفون، أو استخدم الزرارين بالأسفل.";
+          handled = true; // منوقفش نحاول تاني لو الإذن مرفوض أصلًا
+          langPickerBusy = false;
+        }
+        // أخطاء تانية ("no-speech" مثلًا) مؤقتة، onend هيحاول تاني لوحده
+      };
       rec.onend = function(){
         if(!handled){
           // ما اتفهمش كلام، نجرب تاني كام مرة كمان بعد لحظة بسيطة
@@ -420,13 +442,18 @@
         }
       };
       rec.start();
-    }catch(e){ langPickerBusy = false; }
+    }catch(e){
+      console.error(e);
+      voicePickStatus.textContent = "⚠️ تعذّر تشغيل الميكروفون (" + (e && e.name ? e.name : "خطأ غير معروف") + ")";
+      langPickerBusy = false;
+    }
   }
 
   function startLangVoicePicker(){
     if(langPickerBusy) return;
     langPickerBusy = true;
     unlockSpeech();
+    voicePickStatus.textContent = "";
     speakBilingual(
       "قول عربي، لو حابب العربي.",
       "Or say English, for English.",
@@ -594,17 +621,36 @@
      في الكاميرا حاليًا. مفيش موقع (يمين/شمال) هنا لأن ده تصنيف للصورة كلها،
      مش كشف بمكان محدد. بنتكلم بس لو النموذج واثق بنسبة معقولة (>15%) عشان
      منقولش تخمينات عشوائية غلط. */
+  var mnPendingLabel = null;
+  var mnPendingStreak = 0;
+  var MN_CONFIDENCE_MIN = 0.4; // رفعناها من 0.15 لـ 0.4 عشان نقلل التخمينات العشوائية غير الدقيقة
   async function tryMobileNetFallback(){
-    if(!mobilenetModel || video.readyState < 2) return null;
+    if(!mobilenetModel || video.readyState < 2){
+      mnPendingLabel = null; mnPendingStreak = 0;
+      return null;
+    }
     try{
       var preds = await mobilenetModel.classify(video, 1);
-      if(preds && preds.length && preds[0].probability > 0.15){
-        var raw = (preds[0].className || "").split(",")[0].trim();
-        if(!raw) return null;
-        return (appLang === "en" ? "Possibly: " : "ممكن يكون: ") + raw;
+      if(!preds || !preds.length || preds[0].probability <= MN_CONFIDENCE_MIN){
+        mnPendingLabel = null; mnPendingStreak = 0;
+        return null;
       }
-    }catch(e){ console.error(e); }
-    return null;
+      var raw = (preds[0].className || "").split(",")[0].trim();
+      if(!raw){ mnPendingLabel = null; mnPendingStreak = 0; return null; }
+
+      // منتكلمش على أول تخمين على طول — لازم نفس التخمين يتكرر مرتين ورا
+      // بعض (يعني الكاميرا مستقرة على نفس الحاجة فعلاً) قبل ما نقوله بالصوت.
+      // ده بيمنع "احتمالات عشوائية" بتتغيّر كل ٣ ثواني من غير معنى حقيقي.
+      if(raw === mnPendingLabel){
+        mnPendingStreak++;
+      } else {
+        mnPendingLabel = raw;
+        mnPendingStreak = 1;
+      }
+      if(mnPendingStreak < 2) return null;
+
+      return (appLang === "en" ? "Possibly: " : "ممكن يكون: ") + raw;
+    }catch(e){ console.error(e); return null; }
   }
 
   /* تحميل المكتبات الأساسية (مع مصادر بديلة) وبعدين النموذج */
@@ -868,7 +914,16 @@
   }
 
   function startVoiceCommands(){
-    if(!SRClass) return; // المتصفح مش بيدعم التعرف على الصوت — نتجاهل بهدوء
+    if(!SRClass){
+      // المتصفح مش بيدعم التعرف على الصوت (زي بعض متصفحات آيفون/أندرويد القديمة) —
+      // بنبلّغ المستخدم بدل ما نسكت، عشان يعرف إن الأزرار هي الطريقة البديلة
+      showError(
+        (appLang === "en"
+          ? "<b>ℹ️ Voice commands are not supported in this browser.</b><br>Use the buttons below instead (Start / Stop / Repeat)."
+          : "<b>ℹ️ الأوامر الصوتية مش مدعومة في المتصفح ده.</b><br>استخدم الأزرار بالأسفل بدلها (ابدأ / إيقاف / إعادة).")
+      );
+      return;
+    }
     try{
       recognizer = new SRClass();
       recognizer.lang = STR[appLang].recogLang;
@@ -887,6 +942,11 @@
         if(e.error === "not-allowed" || e.error === "service-not-allowed"){
           voiceListening = false;
           micChip.classList.remove("show");
+          showError(
+            appLang === "en"
+              ? "<b>⚠️ Microphone permission was denied.</b><br>Voice commands won't work until you allow microphone access for this site in your browser settings, then reload the page. The buttons below still work normally."
+              : "<b>⚠️ تم رفض إذن الميكروفون.</b><br>الأوامر الصوتية مش هتشتغل لحد ما تسمح بالميكروفون لهذا الموقع من إعدادات المتصفح، وبعدين تعمل تحديث للصفحة. الأزرار بالأسفل لسه شغالة عادي."
+          );
         }
         // "no-speech" وأخطاء تانية مؤقتة: onend هيعيد المحاولة لوحده
       };
