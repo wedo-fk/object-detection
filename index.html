@@ -13,7 +13,7 @@
   // رقم الإصدار اتغيّر وبيعمل تحديث فوري بمعرّف فريد يجبر المتصفح يجيب أحدث
   // نسخة فعلية من السيرفر بدل ما يفضل عالق على نسخة قديمة محفوظة عنده.
   (function(){
-    var BUILD = "2026-08-27-5";
+    var BUILD = "2026-09-01-7";
     try{
       var seen = localStorage.getItem("odBuild");
       if(seen && seen !== BUILD){
@@ -49,6 +49,9 @@
   .camwrap{position:relative;border-radius:18px;overflow:hidden;background:#000;
     border:1px solid #223040;aspect-ratio:3/4;}
   video{width:100%;height:100%;object-fit:cover;display:block;}
+  /* بتتفعّل بس لو الجهاز مسموحله بالكاميرا الأمامية بدل الخلفية (حالة استثنائية) —
+     الكاميرا الأمامية بطبيعتها لازم تتعكس بصريًا زي المرايا، عكس الخلفية تمامًا */
+  video.mirror-front, canvas.overlay.mirror-front{transform:scaleX(-1);}
   canvas.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
   .status-chip{position:absolute;top:10px;inset-inline-start:10px;background:rgba(0,0,0,.6);
     color:var(--text);font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid #2A3644;}
@@ -76,32 +79,74 @@
   .mic-chip.show{display:block;}
 
   /* ===== صفحة اختيار اللغة (الصفحة الرئيسية) ===== */
-  #langScreen{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;
-    flex-direction:column;}
+  #langScreen{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;
+    background:
+      radial-gradient(700px 500px at 15% -10%, rgba(255,176,32,.16), transparent 60%),
+      radial-gradient(700px 500px at 100% 10%, rgba(61,220,151,.14), transparent 55%),
+      linear-gradient(180deg, #0B0F14 0%, #0D131B 55%, #0B0F14 100%);
+    overflow:hidden;}
+
   .lang-top{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:10px;padding:20px;text-align:center;}
-  .lang-logo{font-size:40px;}
-  .lang-title{font-size:20px;font-weight:800;line-height:1.5;}
-  .lang-sub{font-size:14px;color:var(--text-dim);line-height:1.6;max-width:340px;}
-  .lang-btns{display:flex;flex-direction:column;gap:0;}
-  button.lang-btn{border:none;font-size:26px;font-weight:800;padding:34px 16px;
-    display:flex;align-items:center;justify-content:center;gap:12px;}
-  #langArBtn{background:var(--accent);color:#1a1200;}
-  #langEnBtn{background:var(--teal);color:#00220f;}
+    gap:14px;padding:36px 24px 12px;text-align:center;position:relative;}
+
+  .lang-logo-wrap{width:96px;height:96px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(circle at 35% 30%, rgba(255,176,32,.22), rgba(61,220,151,.10) 60%, transparent 75%);
+    border:1px solid rgba(255,176,32,.35);margin-bottom:4px;
+    animation:langLogoPulse 3.6s ease-in-out infinite;}
+  .lang-logo{font-size:46px;filter:drop-shadow(0 0 10px rgba(255,176,32,.35));}
+  @keyframes langLogoPulse{
+    0%,100%{transform:scale(1);box-shadow:0 0 0 rgba(255,176,32,0);}
+    50%{transform:scale(1.05);box-shadow:0 0 24px rgba(255,176,32,.18);}
+  }
+
+  .lang-title{font-size:23px;font-weight:800;line-height:1.55;letter-spacing:.2px;}
+  .lang-title .lang-title-en{display:block;font-size:17px;font-weight:600;color:var(--text-dim);margin-top:2px;}
+
+  .lang-sub{font-size:14px;color:var(--text-dim);line-height:1.7;max-width:360px;}
+  .lang-sub b{color:var(--text);}
+
+  #voicePickStatus:not(:empty){display:inline-block;background:rgba(61,220,151,.12);
+    border:1px solid rgba(61,220,151,.35);color:var(--teal);border-radius:999px;
+    padding:8px 16px;font-size:13.5px;max-width:90%;margin:0 auto;}
+
+  .lang-divider{display:flex;align-items:center;gap:10px;color:var(--text-dim);
+    font-size:12px;padding:2px 24px;}
+  .lang-divider::before,.lang-divider::after{content:"";flex:1;height:1px;background:#223040;}
+
+  .lang-btns{display:flex;flex-direction:column;gap:14px;padding:10px 20px 34px;}
+  button.lang-btn{border:none;font-size:19px;font-weight:800;padding:22px 22px;
+    display:flex;align-items:center;justify-content:flex-start;gap:16px;
+    direction:rtl;text-align:right;
+    border-radius:20px;box-shadow:0 8px 20px -8px rgba(0,0,0,.55);
+    transition:transform .12s ease, box-shadow .12s ease;}
+  button.lang-btn:active{transform:scale(.97);box-shadow:0 4px 12px -6px rgba(0,0,0,.5);}
+  .lang-btn-icon{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-size:24px;flex-shrink:0;background:rgba(0,0,0,.14);}
+  .lang-btn-text{display:flex;flex-direction:column;gap:2px;}
+  .lang-btn-text small{font-weight:600;font-size:12.5px;opacity:.75;}
+  #langArBtn{background:linear-gradient(135deg, var(--accent), #ffcf70);color:#1a1200;}
+  #langEnBtn{background:linear-gradient(135deg, var(--teal), #7cf0bf);color:#00220f;}
 </style>
 </head>
 <body>
 
 <div id="langScreen">
   <div class="lang-top">
-    <div class="lang-logo">🧭</div>
-    <div class="lang-title">كشف الأشياء<br>Object Detection</div>
-    <div class="lang-sub" dir="rtl">دوس على "العربية" أو "English" عشان تبدأ.<br>أو دوس في أي مكان وقول بصوتك "عربي" أو "English"، وبعدين دوس مرة تانية للتأكيد.<br>لو عندك مساعد صوتي (VoiceOver / TalkBack) هيقرالك اسم كل زرار.<br><br>Tap "العربية" or "English" to start.<br>Or tap anywhere and say "Arabic" or "English", then tap once more to confirm.</div>
+    <div class="lang-logo-wrap"><div class="lang-logo">🧭</div></div>
+    <div class="lang-title">كشف الأشياء<span class="lang-title-en">Object Detection</span></div>
+    <div class="lang-sub" dir="rtl">دوس على <b>"العربية"</b> أو <b>"English"</b> عشان تبدأ.<br>أو دوس في أي مكان وقول بصوتك "عربي" أو "English"، وبعدين دوس مرة تانية للتأكيد.<br>لو عندك مساعد صوتي (VoiceOver / TalkBack) هيقرالك اسم كل زرار.<br><br>Tap a language below to start.<br>Or tap anywhere and say "Arabic" or "English", then tap once more to confirm.</div>
     <div class="lang-sub" id="voicePickStatus" style="min-height:20px;"></div>
   </div>
+  <div class="lang-divider">أو اختار من الأزرار / or choose below</div>
   <div class="lang-btns">
-    <button class="lang-btn" id="langArBtn" lang="ar" aria-label="العربية">🕌 العربية</button>
-    <button class="lang-btn" id="langEnBtn" lang="en" aria-label="English">🌍 English</button>
+    <button class="lang-btn" id="langArBtn" lang="ar" aria-label="العربية">
+      <span class="lang-btn-icon">🕌</span>
+      <span class="lang-btn-text">العربية<small>Arabic</small></span>
+    </button>
+    <button class="lang-btn" id="langEnBtn" lang="en" aria-label="English">
+      <span class="lang-btn-icon">🌍</span>
+      <span class="lang-btn-text">English<small>الإنجليزية</small></span>
+    </button>
   </div>
 </div>
 
@@ -258,10 +303,17 @@
       placeholder.style.display = "none";
       startCamBtn.textContent = appLang === "en" ? "✅ Camera on" : "✅ الكاميرا شغالة";
 
-      // لو رغم كل المحاولات لسه شغال بالكاميرا الأمامية، نبلّغ المستخدم بدل ما يفضل يتلخبط
+      // لو رغم كل المحاولات لسه شغال بالكاميرا الأمامية، نبلّغ المستخدم بدل ما يفضل يتلخبط.
+      // ومهم كمان: الكاميرا الأمامية (سيلفي) لازم تتعكس بصريًا زي المرايا (عكس الخلفية
+      // تمامًا اللي متعكسناهاش خالص) — وإلا هتفضل شايف كل حاجة "بالعكس" (زي كتابة مقلوبة).
+      // فبنحدد نوع الكاميرا الفعلي من الجهاز نفسه ونظبط العكس والاتجاهات المسموعة بناءً عليه.
       var track = stream.getVideoTracks()[0];
       var settings = track && track.getSettings ? track.getSettings() : {};
-      if(settings.facingMode === "user"){
+      var isFrontCamera = settings.facingMode === "user";
+      mirrored = isFrontCamera;
+      video.classList.toggle("mirror-front", isFrontCamera);
+      canvas.classList.toggle("mirror-front", isFrontCamera);
+      if(isFrontCamera){
         showError("<b>ℹ️ ملحوظة</b><br>الجهاز ده مسموحله بالكاميرا الأمامية بس حاليًا. لو فيه كاميرا خلفية، تأكد إن مفيش تطبيق تاني شغالها وجرّب تاني.");
       }
 
@@ -662,39 +714,66 @@
     }
   }
 
-  /* لو COCO-SSD ما لقاش حاجة واضحة، بنجرب نسأل MobileNet يخمّن اسم عام للي
-     في الكاميرا حاليًا. مفيش موقع (يمين/شمال) هنا لأن ده تصنيف للصورة كلها،
-     مش كشف بمكان محدد. بنتكلم بس لو النموذج واثق بنسبة معقولة (>15%) عشان
-     منقولش تخمينات عشوائية غلط. */
-  var mnPendingLabel = null;
-  var mnPendingStreak = 0;
-  var MN_CONFIDENCE_MIN = 0.4; // رفعناها من 0.15 لـ 0.4 عشان نقلل التخمينات العشوائية غير الدقيقة
+  /* لو COCO-SSD ما لقاش حاجة من الـ٨٠ نوع اللي بيعرفهم، بنجرب طبقة احتياطية
+     أوسع: بنقسم الصورة لتلات مناطق (شمال / نص / يمين) وبنسأل MobileNet
+     (بيعرف حوالي ١٠٠٠ نوع حاجة، أكتر بكتير من الـ٨٠ بتوع COCO) يخمّن كل
+     منطقة لوحدها. كده بنكسب: (١) مفردات أوسع بكتير من COCO، (٢) مكان تقريبي
+     (يمين/شمال/نص) زي بالظبط الكشف الأساسي، مش مجرد "في حاجة" من غير مكان.
+     بنتكلم بس لو النموذج واثق (>35%) والتخمين اتكرر مرتين ورا بعض في نفس
+     المنطقة، عشان منقولش تخمينات عشوائية بتتغيّر كل ٣ ثواني. */
+  var mnRegionState = {
+    left:   {label: null, streak: 0},
+    center: {label: null, streak: 0},
+    right:  {label: null, streak: 0}
+  };
+  var MN_CONFIDENCE_MIN = 0.35;
+  var mnScratchCanvas = document.createElement("canvas");
+
+  async function classifyRegion(sx, sw){
+    var vw = video.videoWidth, vh = video.videoHeight;
+    mnScratchCanvas.width = 224; mnScratchCanvas.height = 224;
+    var ctx = mnScratchCanvas.getContext("2d");
+    ctx.drawImage(video, sx, 0, sw, vh, 0, 0, 224, 224);
+    var preds = await mobilenetModel.classify(mnScratchCanvas, 1);
+    if(!preds || !preds.length || preds[0].probability <= MN_CONFIDENCE_MIN) return null;
+    var raw = (preds[0].className || "").split(",")[0].trim();
+    return raw || null;
+  }
+
   async function tryMobileNetFallback(){
     if(!mobilenetModel || video.readyState < 2){
-      mnPendingLabel = null; mnPendingStreak = 0;
+      mnRegionState.left.streak = mnRegionState.center.streak = mnRegionState.right.streak = 0;
       return null;
     }
     try{
-      var preds = await mobilenetModel.classify(video, 1);
-      if(!preds || !preds.length || preds[0].probability <= MN_CONFIDENCE_MIN){
-        mnPendingLabel = null; mnPendingStreak = 0;
-        return null;
+      var vw = video.videoWidth;
+      var third = vw / 3;
+      var zones = [
+        {key: "left",   sx: 0,           sw: third, label: STR[appLang].zoneLeft},
+        {key: "center", sx: third,       sw: third, label: STR[appLang].zoneCenter},
+        {key: "right",  sx: third * 2,   sw: third, label: STR[appLang].zoneRight}
+      ];
+      var segments = [];
+      var displayParts = [];
+      for(var i=0;i<zones.length;i++){
+        var z = zones[i];
+        var raw = await classifyRegion(z.sx, z.sw);
+        var st = mnRegionState[z.key];
+        if(raw && raw === st.label){
+          st.streak++;
+        } else {
+          st.label = raw;
+          st.streak = raw ? 1 : 0;
+        }
+        if(raw && st.streak >= 2){
+          var prefix = appLang === "en" ? "Possibly " : "ممكن يكون ";
+          var text = prefix + raw + " " + z.label;
+          displayParts.push(text);
+          segments.push({text: text});
+        }
       }
-      var raw = (preds[0].className || "").split(",")[0].trim();
-      if(!raw){ mnPendingLabel = null; mnPendingStreak = 0; return null; }
-
-      // منتكلمش على أول تخمين على طول — لازم نفس التخمين يتكرر مرتين ورا
-      // بعض (يعني الكاميرا مستقرة على نفس الحاجة فعلاً) قبل ما نقوله بالصوت.
-      // ده بيمنع "احتمالات عشوائية" بتتغيّر كل ٣ ثواني من غير معنى حقيقي.
-      if(raw === mnPendingLabel){
-        mnPendingStreak++;
-      } else {
-        mnPendingLabel = raw;
-        mnPendingStreak = 1;
-      }
-      if(mnPendingStreak < 2) return null;
-
-      return (appLang === "en" ? "Possibly: " : "ممكن يكون: ") + raw;
+      if(!segments.length) return null;
+      return {text: displayParts.join("، "), segments: segments};
     }catch(e){ console.error(e); return null; }
   }
 
@@ -779,13 +858,47 @@
     window.speechSynthesis.onvoiceschanged = refreshVoices;
   }
 
+  /* بعض الأجهزة (خصوصًا أندرويد رخيصة أو معمولها ضبط مصنع بسيط) مش بتيجي
+     ومعاها صوت عربي متثبت لمحرك تحويل النص لكلام أصلاً — في الحالة دي
+     speechSynthesis بيحاول يتكلم بس مفيش صوت فعلي يطلع (صمت تام من غير أي
+     خطأ ظاهر). بدل ما نسيب المستخدم في صمت من غير ما يعرف السبب، بنتأكد
+     ونوريه رسالة واضحة تقوله بالظبط المشكلة إيه وإزاي يصلحها. */
+  var voiceWarnedFor = {};
+  function checkVoiceAvailability(){
+    if(!("speechSynthesis" in window) || !appLang) return;
+    var voices = window.speechSynthesis.getVoices();
+    if(!voices || voices.length === 0) return; // لسه القائمة ما اتحمّلتش، هنتأكد تاني لما تتحمّل
+    var hasMatch = pickVoice(appLang === "en" ? "en" : "ar");
+    if(!hasMatch && !voiceWarnedFor[appLang]){
+      voiceWarnedFor[appLang] = true;
+      showError(
+        appLang === "ar"
+          ? "<b>⚠️ الجهاز ده مفيهوش صوت عربي متثبت لتحويل النص لكلام.</b><br>" +
+            "التطبيق هيحاول يتكلم بأي صوت افتراضي، بس ممكن يطلع صامت أو بلكنة غريبة. " +
+            "الحل: من إعدادات الجهاز → تسهيل الاستخدام (Accessibility) → تحويل النص إلى كلام (Text-to-Speech) → نزّل/فعّل صوت عربي، وبعدين ارجع افتح الصفحة تاني."
+          : "<b>⚠️ No English text-to-speech voice found on this device.</b><br>" +
+            "The app will try a default voice, but it may stay silent or sound off. " +
+            "Fix: Device Settings → Accessibility → Text-to-Speech → install/enable an English voice, then reopen this page."
+      );
+    }
+  }
+  if("speechSynthesis" in window){
+    var _origOnVoicesChanged = window.speechSynthesis.onvoiceschanged;
+    window.speechSynthesis.onvoiceschanged = function(){
+      refreshVoices();
+      checkVoiceAvailability();
+    };
+  }
+
   /* بيقول مصفوفة جمل [{text}, ...] كلها بلغة التطبيق المختارة، جملة بعد التانية
      (onend) عشان محدش يضيع على متصفحات الموبايل لو اتبعتوا مرة واحدة */
   function speakSequence(segments){
     if(!("speechSynthesis" in window)) return;
     refreshVoices();
+    checkVoiceAvailability();
     window.speechSynthesis.cancel();
     var i = 0;
+    var anyError = false;
     function speakNext(){
       if(i >= segments.length) return;
       var seg = segments[i++];
@@ -795,7 +908,11 @@
       else { u.lang = appLang === "en" ? "en-US" : "ar-EG"; }
       u.rate = 0.95;
       u.onend = speakNext;
-      u.onerror = speakNext; // نكمل الباقي حتى لو جزء فشل بدل ما نوقف بالكامل
+      u.onerror = function(e){
+        console.error("speechSynthesis error:", e && e.error);
+        anyError = true;
+        speakNext(); // نكمل الباقي حتى لو جزء فشل بدل ما نوقف بالكامل
+      };
       window.speechSynthesis.speak(u);
     }
     // تأخير بسيط بعد cancel() لأن بعض متصفحات الآيفون بتفقد أول جملة لو اتبعتت
@@ -823,12 +940,13 @@
 
       if(predictions.length === 0){
         // COCO-SSD ما لقاش حاجة من الـ80 نوع اللي بيعرفهم — نجرب طبقة احتياطية
-        // (MobileNet) تخمّن اسم عام للي في الكاميرا، بدل ما نقول "مفيش حاجة" على طول
-        var fallbackGuess = await tryMobileNetFallback();
-        if(fallbackGuess){
-          lastText = fallbackGuess;
+        // أوسع (MobileNet، مقسّم يمين/شمال/نص) تخمّن اسم عام للي في الكاميرا
+        // ومكانه التقريبي، بدل ما نقول "مفيش حاجة" على طول
+        var fallback = await tryMobileNetFallback();
+        if(fallback){
+          lastText = fallback.text;
           result.textContent = lastText;
-          lastSegments = [ {text: fallbackGuess} ];
+          lastSegments = fallback.segments;
         } else {
           lastText = s.noObjects;
           result.textContent = lastText;
